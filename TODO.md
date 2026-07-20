@@ -15,6 +15,7 @@
 - [x] **09. Python** — `topics/10-python.md` — ১৫ মিনিট
 - [x] **10. Problem Solving (টপ ৫)** — `topics/02-problem-solving.md` — ১৫ মিনিট
 - [x] **11. HR প্রশ্ন প্রস্তুতি** — `topics/11-hr-questions.md` — ১৫ মিনিট
+- [ ] **12. আমার প্রশ্ন (Dev/HR/Admin — rules & policy)** — `topics/12-questions-to-ask.md` — ১৫ মিনিট
 
 **মোট সময়:** ২ ঘণ্টা ৪৫ মিনিট (প্রয়োজনে উপরের অর্ডার অনুযায়ী যতটুকু সময়ে যতটুকু হয়)
 
