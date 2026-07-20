@@ -6,6 +6,15 @@
 
 **Description:** একটা array আর একটা target দেওয়া — এমন দুইটা সংখ্যার index বের করতে হবে যাদের যোগফল target। সবচেয়ে জিজ্ঞাসিত ওয়ার্ম-আপ; আসল পরীক্ষা: brute force O(n²) থেকে hash map O(n)-এ আনতে পারা।
 
+```mermaid
+flowchart LR
+    A["i=0, num=2
+    need=7 → seen-এ নেই
+    seen={2:0}"] --> B["i=1, num=7
+    need=2 → seen-এ আছে (index 0)!
+    return [0,1]"]
+```
+
 **কোড:**
 ```php
 function twoSum(array $nums, int $target): array
@@ -32,6 +41,21 @@ function twoSum(array $nums, int $target): array
 ### ২. Valid Parentheses (Stack প্যাটার্ন)
 
 **Description:** `"({[]})"` জাতীয় string-এ bracket-গুলো সঠিকভাবে খোলা-বন্ধ হয়েছে কিনা চেক। Stack-এর ক্লাসিক ব্যবহার — nested structure মানেই stack, এই intuition যাচাই করা হয়।
+
+```mermaid
+flowchart TB
+    A["( → push
+    stack: [(]"] --> B["{ → push
+    stack: [(, {]"]
+    B --> C["[ → push
+    stack: [(, {, []"]
+    C --> D["] → pop, [ মেলে ✅
+    stack: [(, {]"]
+    D --> E["} → pop, { মেলে ✅
+    stack: [(]"]
+    E --> F[") → pop, ( মেলে ✅
+    stack: [] → valid"]
+```
 
 **কোড:**
 ```php
@@ -60,6 +84,16 @@ function isValid(string $s): bool
 ### ৩. Longest Substring Without Repeating Characters (Sliding Window প্যাটার্ন)
 
 **Description:** একটা string-এ repeat-না-করা সবচেয়ে লম্বা substring-এর দৈর্ঘ্য। Sliding window-র সেরা উদাহরণ — nested loop O(n²)-কে দুই pointer-এ O(n) করা যায় কিনা সেটাই পরীক্ষা।
+
+```mermaid
+flowchart LR
+    A["right=0..2 'abc'
+    window=[0,2], duplicate নেই"] --> B["right=3 'a' duplicate!
+    left জাম্প → lastSeen['a']+1 = 1
+    window=[1,3] 'bca'"]
+    B --> C["right এগোতেই থাকে...
+    best = 3"]
+```
 
 **কোড:**
 ```php
@@ -91,6 +125,18 @@ function lengthOfLongestSubstring(string $s): int
 ### ৪. Merge Intervals (Sort + Sweep প্যাটার্ন)
 
 **Description:** Overlapping interval-গুলো merge করা — `[[1,3],[2,6],[8,10]]` → `[[1,6],[8,10]]`। বাস্তব কাজের সবচেয়ে কাছের প্রবলেম (মিটিং শিডিউল, ডেলিভারি টাইম-স্লট, রিপোর্টের date range) — তাই সিনিয়রদের প্রিয়।
+
+```mermaid
+graph LR
+    subgraph Sorted["Sort করা: [1,3] [2,6] [8,10]"]
+        A["[1,3]"] --- B["[2,6]
+        (overlap: 2<=3)"] --- C["[8,10]
+        (gap: 8>6)"]
+    end
+    subgraph Merged["Merge ফলাফল"]
+        D["[1,6]"] --- E["[8,10]"]
+    end
+```
 
 **কোড:**
 ```php
@@ -124,6 +170,16 @@ function mergeIntervals(array $intervals): array
 ### ৫. Top K Frequent Elements (Hash Map + Heap/Bucket প্যাটার্ন)
 
 **Description:** Array-তে সবচেয়ে বেশি বার আসা K-টা element। দুই ধাপ চিন্তা যাচাই হয়: frequency গোনা (hash map) + সেরা K বাছা (heap/bucket) — "টপ N প্রোডাক্ট/কাস্টমার" রিপোর্টের ছোট সংস্করণ।
+
+```mermaid
+flowchart LR
+    A["Array"] --> B["Hash Map
+    frequency count"]
+    B --> C["Bucket sort
+    index = frequency"]
+    C --> D["উপর থেকে নামা
+    top K তুলে নেওয়া"]
+```
 
 **কোড:**
 ```php

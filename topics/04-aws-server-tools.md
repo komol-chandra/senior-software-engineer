@@ -6,6 +6,21 @@
 
 **Description:** "আপনার অ্যাপ AWS-এ কীভাবে deploy করবেন?" — সবচেয়ে সম্ভাব্য ওপেনিং প্রশ্ন। একটা পরিষ্কার reference architecture মুখস্থ থাকলে বাকি প্রশ্ন এর ডালপালা।
 
+```mermaid
+graph TB
+    A["Route 53 (DNS)"] --> B["CloudFront (CDN)"]
+    B --> C["ALB"]
+    C --> D["EC2 ASG / ECS
+    (app, multi-AZ)"]
+    D --> E[("RDS MySQL
+    Multi-AZ")]
+    D --> F[("ElastiCache Redis")]
+    D --> G[("S3
+    uploads")]
+    B --> H["S3 + CloudFront
+    React static hosting"]
+```
+
 **৬টা Key Point:**
 1. Core স্ট্যাক: Route 53 (DNS) → CloudFront (static/CDN) → ALB → EC2 Auto Scaling Group / ECS (app) → RDS (MySQL) + ElastiCache (Redis) + S3 (files)
 2. App server stateless রাখা — session/cache Redis-এ, uploads S3-তে; তবেই horizontal scale আর instance মরলেও ক্ষতি নেই
@@ -17,6 +32,14 @@
 ### ২. EC2 vs ECS/Fargate vs Lambda — Compute বাছাই
 
 **Description:** কোন workload কোন compute-এ চালাবেন — cost, control, operational overhead-এর trade-off বলা।
+
+```mermaid
+graph LR
+    A["EC2
+    পূর্ণ control, বেশি ops"] --- B["ECS/Fargate
+    container দাও, সার্ভার ভুলে যাও"] --- C["Lambda
+    event-driven, ছোট কাজ"]
+```
 
 **৬টা Key Point:**
 1. EC2: পূর্ণ control, সস্তা reserved-এ — কিন্তু patching/AMI/scaling নিজের ঘাড়ে; traditional সেটআপ
@@ -30,6 +53,15 @@
 
 **Description:** Managed DB নিলে কী পান, কী তবু নিজের দায়িত্ব — backup, replica, failover, connection সামলানো।
 
+```mermaid
+graph LR
+    A[("RDS Primary")] -->|"sync standby
+    Multi-AZ failover"| B[("Standby")]
+    A -->|"async
+    read scale"| C[("Read Replica")]
+    A -.->|"automated"| D["Backup / PITR snapshot"]
+```
+
 **৬টা Key Point:**
 1. RDS দেয়: automated backup + point-in-time recovery, patching, Multi-AZ failover — undifferentiated কাজ AWS-এর ঘাড়ে
 2. Multi-AZ (sync standby, failover ~১-২ মিনিট) ≠ read replica (async, read scale) — দুটোর উদ্দেশ্য আলাদা, দুটোই লাগতে পারে
@@ -41,6 +73,22 @@
 ### ৪. S3 ও CloudFront: File Storage ও CDN
 
 **Description:** User upload, report file, static asset — S3-কেন্দ্রিক ডিজাইন আর নিরাপদ file access-এর প্যাটার্ন।
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant CF as CloudFront (edge)
+    participant S3 as S3 (private bucket)
+    U->>CF: GET asset/report
+    alt cache hit
+        CF-->>U: cached response (fast)
+    else cache miss
+        CF->>S3: fetch via OAC
+        S3-->>CF: object
+        CF-->>U: response + cache করে রাখে
+    end
+    Note over U,S3: Upload/download সরাসরি pre-signed URL দিয়ে — app server এড়িয়ে
+```
 
 **৬টা Key Point:**
 1. S3 = ১১টা 9 durability-র object store — app server-এর ডিস্কে file রাখা মানেই scale ও reliability দুটোই ভাঙা
@@ -54,6 +102,18 @@
 
 **Description:** Access key লিক হওয়াই AWS-এর এক নম্বর নিরাপত্তা দুর্ঘটনা। Role-ভিত্তিক least-privilege ডিজাইন বলতে পারা সিনিয়র লক্ষণ।
 
+```mermaid
+graph TB
+    A["Root Account"] --> B["IAM User
+    (মানুষ, MFA)"]
+    A --> C["IAM Role
+    (সার্ভিস, EC2/ECS assume করে)"]
+    B --> D["Policy: Effect+Action+Resource+Condition"]
+    C --> D
+    D --> E["Resource
+    (S3 bucket, RDS, ...)"]
+```
+
 **৬টা Key Point:**
 1. মূলনীতি least privilege: যতটুকু দরকার ততটুকু permission — `AdministratorAccess` app-কে দেওয়া অপরাধ
 2. EC2/ECS-এ IAM Role ব্যবহার — কোডে/env-এ access key রাখা নয়; role-এর temporary credential auto-rotate হয়
@@ -65,6 +125,18 @@
 ### ৬. Auto Scaling ও Load Balancing
 
 **Description:** ট্রাফিক বাড়া-কমার সাথে ইনফ্রা কীভাবে নিজে adjust করবে — health check, scaling policy, আর graceful deploy।
+
+```mermaid
+graph LR
+    A["Client traffic"] --> B["ALB
+    health check"]
+    B -->|"healthy"| C["Target Group
+    EC2/ECS instances"]
+    C -->|"CPU>60% (target tracking)"| D["Auto Scaling Group
+    scale-out"]
+    C -->|"queue depth মেট্রিক"| E["Worker scaling
+    (CPU নয়)"]
+```
 
 **৬টা Key Point:**
 1. ALB: L7 (HTTP) — path/host routing, health check fail হলে instance-এ traffic বন্ধ; NLB শুধু raw TCP/চরম performance দরকারে
@@ -78,6 +150,18 @@
 
 **Description:** Dev থেকে প্রোডাকশন পর্যন্ত একই environment — image build, layer optimization, আর compose vs orchestration-এর সীমা।
 
+```mermaid
+flowchart LR
+    A["Dockerfile
+    (multi-stage build)"] --> B["Image
+    (small, runtime-only)"]
+    B --> C["ECR
+    (vulnerability scan)"]
+    C --> D["ECS/K8s
+    orchestration deploy"]
+    E["docker-compose"] -.->|"local dev only"| F["app + MySQL + Redis"]
+```
+
 **৬টা Key Point:**
 1. মূল লাভ: "আমার মেশিনে চলে" সমস্যার মৃত্যু — image-ই artifact, সব environment-এ একই জিনিস চলে
 2. Multi-stage build: composer/npm build stage আলাদা, final image-এ শুধু runtime — ছোট image, কম attack surface
@@ -90,6 +174,19 @@
 
 **Description:** Push থেকে প্রোডাকশন পর্যন্ত automated পথ — কী কী stage, কোথায় মানুষ লাগে, আর রোলব্যাক কীভাবে।
 
+```mermaid
+flowchart LR
+    A["git push"] --> B["lint + test"]
+    B --> C["build
+    (Docker image)"]
+    C --> D["staging deploy"]
+    D --> E["approval"]
+    E --> F["production deploy
+    (rolling / zero-downtime)"]
+    F -.->|"সমস্যা হলে"| G["rollback
+    আগের image-এ"]
+```
+
 **৬টা Key Point:**
 1. স্ট্যান্ডার্ড pipeline: push → lint + test → build (Docker image/artifact) → staging deploy → (approval) → production deploy
 2. Laravel deploy ধাপগুলো স্ক্রিপ্টে: composer install `--no-dev`, config/route cache, `migrate --force`, queue worker restart (`queue:restart`)
@@ -101,6 +198,22 @@
 ### ৯. Monitoring, Logging ও Alerting
 
 **Description:** "প্রোডাকশনে সমস্যা হলে কীভাবে জানবেন?" — observability সেটআপ না থাকলে বাকি architecture-এর দাম নেই।
+
+```mermaid
+graph LR
+    A["App"] --> B["Metrics
+    (CloudWatch)"]
+    A --> C["Logs
+    (centralized, structured JSON)"]
+    A --> D["Error Tracking
+    (Sentry)"]
+    B --> E["Alert
+    (5xx, p95 latency, queue depth)"]
+    C --> E
+    D --> E
+    E --> F["Actionable, কম-noise
+    on-call notify"]
+```
 
 **৬টা Key Point:**
 1. তিন স্তম্ভ: metrics (CloudWatch), logs (centralized — CloudWatch Logs/ELK), error tracking (Sentry) — তিনটাই লাগে, একটার বদলে আরেকটা নয়

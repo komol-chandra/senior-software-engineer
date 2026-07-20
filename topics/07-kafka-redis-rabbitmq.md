@@ -6,6 +6,13 @@
 
 **Description:** তিনটাই "message পাঠায়", কিন্তু সম্পূর্ণ ভিন্ন দর্শনে। এই তুলনাটা পরিষ্কার বলতে পারাই এই টপিকের সবচেয়ে সম্ভাব্য প্রশ্ন।
 
+```mermaid
+graph LR
+    A{"কী দরকার?"} -->|"simple job queue"| B["Redis"]
+    A -->|"routing / RPC / delayed retry"| C["RabbitMQ"]
+    A -->|"event stream / replay / fan-out"| D["Kafka"]
+```
+
 **৬টা Key Point:**
 1. RabbitMQ = message broker: task queue, routing, per-message ack — "এই কাজটা কেউ একজন করো"
 2. Kafka = distributed log: event stream, replay, একাধিক consumer group স্বাধীনভাবে পড়ে — "এটা ঘটেছে, যার দরকার শোনো"
@@ -17,6 +24,20 @@
 ### ২. Redis-এর Data Structure ও বাস্তব ব্যবহার
 
 **Description:** Redis শুধু key-value cache না — প্রতিটা data structure-এর একটা বাস্তব use case বলতে পারলে অভিজ্ঞতা প্রমাণ হয়।
+
+```mermaid
+graph TB
+    R["Redis"] --> A["String
+    cache, counter, session"]
+    R --> B["Hash
+    object field আলাদা রাখা"]
+    R --> C["List
+    LPUSH/BRPOP — সরল queue"]
+    R --> D["Sorted Set
+    leaderboard, rate limit, delayed job"]
+    R --> E["Set / HyperLogLog
+    unique tracking, tags"]
+```
 
 **৬টা Key Point:**
 1. String: cache, counter (`INCR` — atomic, তাই rate limit/view count), session, distributed flag
@@ -30,6 +51,23 @@
 
 **Description:** "Cache invalidation is one of the two hard problems" — কোন প্যাটার্নে cache করবেন আর stale data কীভাবে সামলাবেন।
 
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant Ca as Cache
+    participant DB as DB
+    C->>Ca: get(key)
+    alt hit
+        Ca-->>C: cached value
+    else miss
+        Ca->>DB: query
+        DB-->>Ca: data
+        Ca->>Ca: set(key, data, TTL+jitter)
+        Ca-->>C: value
+    end
+    Note over DB,Ca: write হলে → explicit delete(key) invalidation
+```
+
 **৬টা Key Point:**
 1. Cache-aside (সবচেয়ে কমন): আগে cache দেখো → miss হলে DB → cache-এ রেখে return; Laravel `Cache::remember` এটাই
 2. Invalidation-এর দুই পথ: TTL (সহজ, একটু stale মেনে নেওয়া) vs explicit delete on write (fresh, কিন্তু সব write path মনে রাখতে হয়)
@@ -41,6 +79,14 @@
 ### ৪. Message Queue-তে Delivery Guarantee ও Idempotency
 
 **Description:** At-most-once, at-least-once, exactly-once — বাস্তবে কোনটা পাওয়া যায় আর duplicate message-এর সাথে কীভাবে বাঁচবেন।
+
+```mermaid
+graph LR
+    A["At-most-once
+    হারাতে পারে"] --- B["At-least-once
+    duplicate আসতে পারে (বাস্তব স্ট্যান্ডার্ড)"] --- C["Exactly-once
+    = at-least-once + idempotent processing"]
+```
 
 **৬টা Key Point:**
 1. At-least-once-ই বাস্তব স্ট্যান্ডার্ড: message হারাবে না, কিন্তু duplicate আসতে পারে — ack টাইমআউট/redelivery-র কারণে
@@ -54,6 +100,23 @@
 
 **Description:** Kafka-র scale-এর রহস্য partition-এ। এই মডেলটা পরিষ্কার বললে Kafka-র বাকি সব প্রশ্ন সহজ হয়ে যায়।
 
+```mermaid
+graph TB
+    P["Producer
+    (key দিয়ে hash)"] --> T["Topic"]
+    T --> P1["Partition 0"]
+    T --> P2["Partition 1"]
+    T --> P3["Partition 2"]
+    P1 --> CG1["Consumer Group A
+    (billing)"]
+    P2 --> CG1
+    P3 --> CG1
+    P1 --> CG2["Consumer Group B
+    (analytics) — independent offset"]
+    P2 --> CG2
+    P3 --> CG2
+```
+
 **৬টা Key Point:**
 1. Topic = logical stream; ভেতরে N partition — প্রতিটা partition একটা ordered, append-only log
 2. Producer key দিয়ে partition ঠিক হয় (hash) — একই order_id সবসময় একই partition-এ, তাই সেই key-র order রক্ষা
@@ -65,6 +128,17 @@
 ### ৬. RabbitMQ Exchange, Routing ও Dead Letter Queue
 
 **Description:** RabbitMQ-র শক্তি routing-এ। Exchange type আর DLQ দিয়ে ব্যর্থ message সামলানো — প্রোডাকশন queue ডিজাইনের মূল প্রশ্ন।
+
+```mermaid
+graph LR
+    A["Producer"] --> B["Exchange
+    (direct/topic/fanout)"]
+    B --> C["Queue 1"]
+    B --> D["Queue 2"]
+    C -->|"reject/TTL expired"| E["Dead Letter Exchange"]
+    E --> F["DLQ
+    (poison message, manual review)"]
+```
 
 **৬টা Key Point:**
 1. Producer exchange-এ পাঠায়, exchange binding rule অনুযায়ী queue-তে দেয় — producer queue-র নামও জানে না (decoupling)
@@ -78,6 +152,19 @@
 
 **Description:** "Redis restart হলে ডেটা যায়?" — persistence অপশন আর high availability সেটআপ; cache-এর বাইরে Redis-কে ভরসা করার শর্ত।
 
+```mermaid
+graph TB
+    A["Redis Primary"] -->|"RDB snapshot"| B["দ্রুত restart
+    কিছু ডেটা হারাতে পারে"]
+    A -->|"AOF (everysec)"| C["কম হারায়
+    ফাইল বড়"]
+    A -->|"async replication"| D["Replica
+    (Sentinel: monitor + failover)"]
+    E["Cluster"] --> F["Hash slot 1"]
+    E --> G["Hash slot 2"]
+    E --> H["Hash slot 3"]
+```
+
 **৬টা Key Point:**
 1. RDB: interval snapshot — দ্রুত restart, কিন্তু শেষ snapshot-এর পরের ডেটা হারায়; AOF: প্রতিটা write log — কম হারায়, ফাইল বড়
 2. প্র্যাকটিক্যাল: দুটোই on (AOF everysec) — সর্বোচ্চ ~১ সেকেন্ড হারানোর ঝুঁকি; pure cache হলে persistence বন্ধও রাখা যায়
@@ -89,6 +176,18 @@
 ### ৮. Queue Worker Scaling ও Backpressure
 
 **Description:** Queue জমে যাচ্ছে — worker বাড়াবেন নাকি অন্য কিছু? প্রোডাকশনে queue অপারেট করার বাস্তব প্রশ্ন।
+
+```mermaid
+graph LR
+    A["Queue depth ↑"] --> B{"Bottleneck কোথায়?"}
+    B -->|"CPU/worker"| C["Worker বাড়াও"]
+    B -->|"DB"| D["Worker বাড়ালে DB আগে মরবে
+    — অন্য সমাধান দরকার"]
+    A --> E["Critical queue
+    (payment/OTP) আলাদা"]
+    A --> F["Backpressure:
+    producer rate limit"]
+```
 
 **৬টা Key Point:**
 1. প্রথম মেট্রিক queue depth + processing rate — জমার হার > খরচের হার হলেই ব্যবস্থা; monitoring ছাড়া queue চালানো অন্ধ ওড়া
@@ -102,6 +201,19 @@
 
 **Description:** "একটা ঘটনা অনেকে শুনবে" বনাম "একটা কাজ একজন করবে" — এই পার্থক্য আর real-time notification-এ কীভাবে লাগে।
 
+```mermaid
+graph LR
+    subgraph Queue["Queue — work distribution"]
+        A["Message"] --> B["এক consumer-ই process করে"]
+    end
+    subgraph PubSub["Pub/Sub — fan-out"]
+        C["Event"] --> D["Subscriber 1"]
+        C --> E["Subscriber 2"]
+        C --> F["Subscriber 3
+        (সবাই কপি পায়)"]
+    end
+```
+
 **৬টা Key Point:**
 1. Queue: প্রতিটা message এক consumer process করে (work distribution); Pub/Sub: সব subscriber কপি পায় (notification)
 2. Redis Pub/Sub fire-and-forget — subscriber offline থাকলে message চিরতরে হারায়; তাই শুধু ephemeral কাজে (live update)
@@ -113,6 +225,19 @@
 ### ১০. Event-driven Architecture-এর ঝুঁকি ও Observability
 
 **Description:** সব async/event করলে নতুন সমস্যা আসে — debugging, ordering, consistency। সিনিয়র হিসেবে glamour-এর পাশাপাশি খরচটা জানা যাচাই হয়।
+
+```mermaid
+graph TB
+    A["Request"] --> B["Service 1"]
+    B -->|"event"| C["Service 2"]
+    C -->|"event"| D["Service 3"]
+    D -->|"event"| E["Service 4/5"]
+    F["Correlation ID"] -.->|"প্রতিটা hop-এ বহন করা"| B
+    F -.-> C
+    F -.-> D
+    G["Monitoring:
+    queue depth, consumer lag, DLQ size, latency"]
+```
 
 **৬টা Key Point:**
 1. সবচেয়ে বড় খরচ traceability: এক request-এর কাজ ৫ সার্ভিস/queue-তে ছড়ায় — correlation ID প্রতিটা message-এ বহন করা বাধ্যতামূলক
